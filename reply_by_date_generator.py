@@ -1,58 +1,100 @@
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PyQt5.QtCore import QDate
 import requests
 from datetime import datetime, timedelta
-import collections
 
-collections.Callable = collections.abc.Callable
 
-def get_uk_bank_holidays(year):
+def fetch_uk_bank_holidays():
+    current_year = datetime.now().year
     url = "https://www.gov.uk/bank-holidays.json"
     response = requests.get(url)
     holidays = response.json()['england-and-wales']['events']
-    return tuple(datetime.strptime(holiday['date'], "%Y-%m-%d") for holiday in holidays if
-                 datetime.strptime(holiday['date'], "%Y-%m-%d").year == year)
+    return set(datetime.strptime(holiday['date'], "%Y-%m-%d").date() for holiday in holidays
+               if int(holiday['date'].split('-')[0]) in [current_year, current_year + 1])
 
 
-# Function to update holidays tuple every year
-def update_holidays():
-    current_year = datetime.now().year
-    next_year = current_year + 1
-    holidays = get_uk_bank_holidays(current_year) + get_uk_bank_holidays(next_year)
-    return holidays
+class HolidayChecker(QWidget):
+    def __init__(self):
+        super().__init__()
 
+        self.setWindowTitle("UK Bank Holidays Checker")
+        self.setGeometry(100, 100, 400, 250)
+        self.holidays = fetch_uk_bank_holidays()
 
-# Global variable to hold bank holidays
-bank_holidays = update_holidays()
+        self.layout = QVBoxLayout()
 
+        self.date_label = QLabel("Enter date (DD/MM/YYYY):")
+        self.date_input = QLineEdit()
 
-def adjust_for_weekends_and_holidays(date, exclude_holidays):
-    while date.weekday() >= 5 or (exclude_holidays and date in bank_holidays):
-        date += timedelta(days=1)
-    return date
+        self.days_label = QLabel("Days to add for reply:")
+        self.days_input = QLineEdit()
 
+        self.avoid_label = QLabel("Avoid weekends and UK bank holidays for reply? (y/n):")
+        self.avoid_input = QLineEdit()
 
-def main():
-    date_str = input("Enter start date (DD/MM/YYYY): ")
-    start_date = datetime.strptime(date_str, "%d/%m/%Y")
+        self.processing_days_label = QLabel("Days to add for post-processing:")
+        self.processing_days_input = QLineEdit()
 
-    days_to_add = int(input("Enter number of days for reply by date: "))
-    reply_by_date = start_date + timedelta(days=days_to_add)
+        self.avoid_processing_label = QLabel("Avoid weekends and holidays for post-processing? (y/n):")
+        self.avoid_processing_input = QLineEdit()
 
-    avoid_weekends_or_holidays = input("Avoid weekends or UK Bank Holidays for reply by date? (y/n): ").lower() == 'y'
-    if avoid_weekends_or_holidays:
-        reply_by_date = adjust_for_weekends_and_holidays(reply_by_date, True)
+        self.result_button = QPushButton("Calculate")
+        self.result_button.clicked.connect(self.calculate_dates)
 
-    print(f"Reply by Date: {reply_by_date.strftime('%d/%m/%Y')}")
+        self.layout.addWidget(self.date_label)
+        self.layout.addWidget(self.date_input)
+        self.layout.addWidget(self.days_label)
+        self.layout.addWidget(self.days_input)
+        self.layout.addWidget(self.avoid_label)
+        self.layout.addWidget(self.avoid_input)
+        self.layout.addWidget(self.processing_days_label)
+        self.layout.addWidget(self.processing_days_input)
+        self.layout.addWidget(self.avoid_processing_label)
+        self.layout.addWidget(self.avoid_processing_input)
+        self.layout.addWidget(self.result_button)
 
-    extra_days = int(input("Enter additional days for post processing: "))
-    post_processing_date = reply_by_date + timedelta(days=extra_days)
+        self.setLayout(self.layout)
 
-    avoid_processing_weekends_or_holidays = input(
-        "Avoid weekends or UK Bank Holidays for post processing date? (y/n): ").lower() == 'y'
-    if avoid_processing_weekends_or_holidays:
-        post_processing_date = adjust_for_weekends_and_holidays(post_processing_date, True)
+    def adjust_date(self, date, avoid_weekends_holidays):
+        while date.weekday() >= 5 or date in self.holidays:
+            date += timedelta(days=1)
+        return date
 
-    print(f"Post Processing Date: {post_processing_date.strftime('%d/%m/%Y')}")
+    def calculate_dates(self):
+        date_str = self.date_input.text()
+        days_to_add = int(self.days_input.text())
+        avoid_reply = self.avoid_input.text().lower() == 'y'
+        extra_processing_days = int(self.processing_days_input.text())
+        avoid_processing = self.avoid_processing_input.text().lower() == 'y'
+
+        try:
+            date = datetime.strptime(date_str, "%d/%m/%Y").date()
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "The date format should be DD/MM/YYYY")
+            return
+
+        reply_by_date = date + timedelta(days=days_to_add)
+
+        if avoid_reply:
+            reply_by_date = self.adjust_date(reply_by_date, avoid_reply)
+
+        processing_date = reply_by_date + timedelta(days=extra_processing_days)
+
+        if avoid_processing:
+            processing_date = self.adjust_date(processing_date, avoid_processing)
+
+        QMessageBox.information(
+            self,
+            "Results",
+            f"Reply By Date: {reply_by_date.strftime('%d/%m/%Y')}\n"
+            f"Processing Date: {processing_date.strftime('%d/%m/%Y')}"
+        )
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    app = QApplication(sys.argv)
+    window = HolidayChecker()
+    window.show()
+    sys.exit(app.exec_())
