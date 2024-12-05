@@ -3,3 +3,4 @@ This is the AI input:
 
 After telling the AI not to attempt to add checkboxes this iteration of the code finally works :)
 
+Hmmm, initial test shows it is adjusting for weekends and Bank holidays even if the user enters 'n'
