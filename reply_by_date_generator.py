@@ -71,7 +71,7 @@ class BankHolidayApp(toga.App):
 
         # Avoid weekends for reply by date
         avoid_weekends_holidays_reply_box = toga.Box(style=Pack(direction=ROW, padding=5))
-        avoid_weekends_holidays_reply_label = toga.Label('Avoid weekends and holidays for reply? (y/n): ',
+        avoid_weekends_holidays_reply_label = toga.Label('Adjust for weekend/ Bank hols? (y/n): ',
                                                          style=Pack(padding=(0, 5)))
         self.avoid_weekends_holidays_reply_input = toga.TextInput(style=Pack(flex=1))
         avoid_weekends_holidays_reply_box.add(avoid_weekends_holidays_reply_label)
@@ -86,7 +86,7 @@ class BankHolidayApp(toga.App):
 
         # Avoid weekends for post processing date
         avoid_weekends_holidays_processing_box = toga.Box(style=Pack(direction=ROW, padding=5))
-        avoid_weekends_holidays_processing_label = toga.Label('Avoid weekends and holidays for processing? (y/n): ',
+        avoid_weekends_holidays_processing_label = toga.Label('Adjust for weekend/ Bank hols? (y/n): ',
                                                               style=Pack(padding=(0, 5)))
         self.avoid_weekends_holidays_processing_input = toga.TextInput(style=Pack(flex=1))
         avoid_weekends_holidays_processing_box.add(avoid_weekends_holidays_processing_label)
