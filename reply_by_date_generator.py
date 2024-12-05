@@ -1,104 +1,91 @@
 import toga
 from toga.style import Pack
-from toga.style.pack import COLUMN
-import requests
+from toga.style.pack import COLUMN, ROW
 from datetime import datetime, timedelta
+import requests
 
 
 class BankHolidayApp(toga.App):
-    bank_holidays = ()
 
     def startup(self):
         self.main_window = toga.MainWindow(title=self.name)
 
-        # Update holidays at startup
-        self.update_holidays()
+        # Interface elements
+        self.date_input = toga.TextInput(placeholder='Enter start date (DD/MM/YYYY)')
+        self.days_to_add_input = toga.NumberInput(min_value=0, step=1)
+        self.avoid_reply_weekends_checkbox = toga.CheckBox('Avoid weekends and holidays for reply by date')
+        self.extra_days_input = toga.NumberInput(min_value=0, step=1, placeholder='Additional processing days')
+        self.avoid_processing_weekends_checkbox = toga.CheckBox('Avoid weekends and holidays for processing date')
 
-        # Create the input fields and buttons
-        self.start_date_input = toga.TextInput(placeholder='Enter start date (DD/MM/YYYY)', style=Pack(flex=1))
-        self.days_input = toga.TextInput(placeholder='Enter days to add', style=Pack(flex=1))
+        self.calculate_button = toga.Button('Generate Dates', on_press=self.on_calculate_dates)
+        self.result_label = toga.Label('Result will be shown here')
 
-        self.avoid_weekends_holidays_input = toga.TextInput(placeholder='Avoid weekends/holidays? (y/n)',
-                                                            style=Pack(flex=1))
-        self.processing_days_input = toga.TextInput(placeholder='Enter additional processing days', style=Pack(flex=1))
-        self.avoid_weekends_holidays_processing_input = toga.TextInput(
-            placeholder='Avoid weekends/holidays for processing? (y/n)', style=Pack(flex=1))
-
-        self.generate_button = toga.Button('Generate', on_press=self.on_generate, style=Pack(padding=5))
-
-        # Layout the inputs and button
+        # Layout the interface
         main_box = toga.Box(
             children=[
-                self.start_date_input,
-                self.days_input,
-                self.avoid_weekends_holidays_input,
-                self.processing_days_input,
-                self.avoid_weekends_holidays_processing_input,
-                self.generate_button
+                toga.Box(children=[toga.Label('Start Date:'), self.date_input], style=Pack(direction=ROW, padding=5)),
+                toga.Box(children=[toga.Label('Days to Add:'), self.days_to_add_input],
+                         style=Pack(direction=ROW, padding=5)),
+                toga.Box(children=[self.avoid_reply_weekends_checkbox], style=Pack(direction=ROW, padding=5)),
+                toga.Box(children=[toga.Label('Additional Days:'), self.extra_days_input],
+                         style=Pack(direction=ROW, padding=5)),
+                toga.Box(children=[self.avoid_processing_weekends_checkbox], style=Pack(direction=ROW, padding=5)),
+                self.calculate_button,
+                self.result_label
             ],
             style=Pack(direction=COLUMN, padding=10)
         )
 
-        self.result_label = toga.Label('', style=Pack(padding=5))
-        main_box.add(self.result_label)
-
         self.main_window.content = main_box
         self.main_window.show()
 
-    def update_holidays(self):
-        current_year = datetime.now().year
-        next_year = current_year + 1
-        self.bank_holidays = self.get_uk_bank_holidays(current_year) + self.get_uk_bank_holidays(next_year)
-
-    def get_uk_bank_holidays(self, year):
+    def get_uk_bank_holidays(self):
+        year = datetime.now().year
         url = f"https://www.gov.uk/bank-holidays.json"
-        try:
-            response = requests.get(url)
-            holidays = response.json()['england-and-wales']['events']
-        except requests.RequestException as e:
-            print(f"Error fetching holidays: {e}")
-            holidays = []
+        response = requests.get(url)
+        holidays = response.json()['england-and-wales']['events']
+        return set(datetime.strptime(holiday['date'], "%Y-%m-%d") for holiday in holidays if
+                   datetime.strptime(holiday['date'], "%Y-%m-%d").year in {year, year + 1})
 
-        return tuple(datetime.strptime(holiday['date'], "%Y-%m-%d").date() for holiday in holidays if
-                     datetime.strptime(holiday['date'], "%Y-%m-%d").year == year)
-
-    def on_generate(self, widget):
-        try:
-            start_date_str = self.start_date_input.value
-            days_to_add = int(self.days_input.value)
-            avoid_weekends_holidays = self.avoid_weekends_holidays_input.value.lower() == 'y'
-
-            start_date = datetime.strptime(start_date_str, "%d/%m/%Y").date()
-
-            reply_by_date = self.adjust_date(start_date, days_to_add)
-            if avoid_weekends_holidays:
-                reply_by_date = self.adjust_for_weekends_and_holidays(reply_by_date)
-
-            extra_days = int(self.processing_days_input.value)
-            avoid_weekends_holidays_processing = self.avoid_weekends_holidays_processing_input.value.lower() == 'y'
-
-            processing_date = self.adjust_date(reply_by_date, extra_days)
-            if avoid_weekends_holidays_processing:
-                processing_date = self.adjust_for_weekends_and_holidays(processing_date)
-
-            self.result_label.text = (
-                f"Reply by Date: {reply_by_date.strftime('%d/%m/%Y')}\n"
-                f"Processing Date: {processing_date.strftime('%d/%m/%Y')}"
-            )
-        except Exception as e:
-            self.result_label.text = f"Error: {str(e)}"
-
-    def adjust_date(self, start_date, days_to_add):
-        return start_date + timedelta(days=days_to_add)
-
-    def adjust_for_weekends_and_holidays(self, date):
-        while date.weekday() >= 5 or date in self.bank_holidays:
+    def adjust_date(self, date, exclude_weekends=False, exclude_holidays=()):
+        while (exclude_weekends and date.weekday() >= 5) or (date in exclude_holidays):
             date += timedelta(days=1)
         return date
 
+    def on_calculate_dates(self, widget):
+        try:
+            start_date = datetime.strptime(self.date_input.value, '%d/%m/%Y')
+            days_to_add = int(self.days_to_add_input.value)
+            holidays = self.get_uk_bank_holidays()
+
+            # Calculate reply by date
+            reply_by_date = start_date + timedelta(days=days_to_add)
+
+            if self.avoid_reply_weekends_checkbox.is_checked:
+                reply_by_date = self.adjust_date(reply_by_date, exclude_weekends=True, exclude_holidays=holidays)
+
+            # Add post-processing days
+            extra_days = int(self.extra_days_input.value)
+            post_processing_date = reply_by_date + timedelta(days=extra_days)
+
+            if self.avoid_processing_weekends_checkbox.is_checked:
+                post_processing_date = self.adjust_date(post_processing_date, exclude_weekends=True,
+                                                        exclude_holidays=holidays)
+
+            # Present the results
+            self.result_label.text = (
+                f'Reply by Date: {reply_by_date.strftime("%d/%m/%Y")}, '
+                f'Processing Date: {post_processing_date.strftime("%d/%m/%Y")}'
+            )
+
+        except ValueError:
+            self.result_label.text = 'Error: Invalid date format.'
+        except Exception as e:
+            self.result_label.text = f'Error: {e}'
+
 
 def main():
-    return BankHolidayApp('Bank Holiday App', 'com.example.bankholiday')
+    return BankHolidayApp('Bank Holiday Manager', 'org.beeware.examples.bankholiday')
 
 
 if __name__ == '__main__':
