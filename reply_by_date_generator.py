@@ -93,6 +93,101 @@ class HolidayChecker(QWidget):
 
 if __name__ == "__main__":
     import sys
+    from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+    from datetime import datetime, timedelta
+    import requests
+    import sys
+
+
+    def get_uk_bank_holidays(year):
+        url = f"https://www.gov.uk/bank-holidays.json"
+        response = requests.get(url)
+        holidays = response.json()['england-and-wales']['events']
+        return tuple(datetime.strptime(holiday['date'], "%Y-%m-%d") for holiday in holidays if
+                     datetime.strptime(holiday['date'], "%Y-%m-%d").year == year)
+
+
+    class HolidayApp(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.initUI()
+            self.update_holidays()
+
+        def initUI(self):
+            self.layout = QVBoxLayout()
+
+            self.date_label = QLabel('Enter start date (DD/MM/YYYY):')
+            self.layout.addWidget(self.date_label)
+
+            self.date_input = QLineEdit(self)
+            self.layout.addWidget(self.date_input)
+
+            self.add_days_label = QLabel('Enter number of days to add:')
+            self.layout.addWidget(self.add_days_label)
+
+            self.add_days_input = QLineEdit(self)
+            self.layout.addWidget(self.add_days_input)
+
+            self.calc_button = QPushButton('Calculate Dates', self)
+            self.calc_button.clicked.connect(self.calculate_dates)
+            self.layout.addWidget(self.calc_button)
+
+            self.result_label = QLabel('')
+            self.layout.addWidget(self.result_label)
+
+            self.setLayout(self.layout)
+            self.setWindowTitle('Bank Holiday Calculator')
+
+        def update_holidays(self):
+            current_year = datetime.now().year
+            next_year = current_year + 1
+            self.bank_holidays = get_uk_bank_holidays(current_year) + get_uk_bank_holidays(next_year)
+
+        def adjust_date(self, date, avoid_weekends, avoid_holidays):
+            while avoid_weekends and date.weekday() >= 5 or date in self.bank_holidays:
+                date += timedelta(days=1)
+            return date
+
+        def calculate_dates(self):
+            try:
+                start_date_str = self.date_input.text()
+                start_date = datetime.strptime(start_date_str, "%d/%m/%Y")
+                days_to_add = int(self.add_days_input.text())
+
+                reply_by_date = start_date + timedelta(days=days_to_add)
+                reply_by_date = self.adjust_date(reply_by_date, True, self.bank_holidays)
+
+                QMessageBox.question(self, 'Avoid Bank Holidays?',
+                                     'Do you want to avoid UK Bank Holidays and weekends for reply by date?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+                # Adjust the post-processing date
+                adjust_reply_by = QMessageBox.Yes
+                if adjust_reply_by == QMessageBox.Yes:
+                    reply_by_date = self.adjust_date(reply_by_date, True, self.bank_holidays)
+
+                extra_days_input, ok = QMessageBox.getText(self, 'Post processing',
+                                                           'Enter additional days for processing:')
+                if ok:
+                    extra_days = int(extra_days_input)
+                    processing_date = reply_by_date + timedelta(days=extra_days)
+                    processing_date = self.adjust_date(processing_date, True, self.bank_holidays)
+
+                    self.result_label.setText(
+                        f'Reply by Date: {reply_by_date.strftime("%d/%m/%Y")}\nProcessing Date: {processing_date.strftime("%d/%m/%Y")}')
+            except Exception as e:
+                QMessageBox.warning(self, "Invalid Input", str(e))
+
+
+    def main():
+        app = QApplication(sys.argv)
+        ex = HolidayApp()
+        ex.show()
+        sys.exit(app.exec_())
+
+
+    if __name__ == '__main__':
+        main()
 
     app = QApplication(sys.argv)
     window = HolidayChecker()
